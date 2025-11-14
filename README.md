@@ -102,6 +102,6 @@ Replace the default cx_Freeze icon with a png!
     variables or config files.
 -   pyttsx3 (`sapi5`) and Streamlit can introduce extra
     dependencies---test thoroughly.
--   Virus scanners don't like this so they may attempt to quarantine it 🦠
+-   Virus scanners some times don't like the buld process or the exe they may attempt to quarantine it 🦠
 
 ------------------------------------------------------------------------
