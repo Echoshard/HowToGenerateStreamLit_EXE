@@ -54,7 +54,7 @@ from google import genai
 from google.genai import types
 ```
 
-If you are using new python lobaries this may be a bit of trial and error when the `EXE` fails just add them one by one until they work!
+If you are using new python libraries this may be a bit of trial and error when the `EXE` fails just add them one by one until they work!
 
 ------------------------------------------------------------------------
 
