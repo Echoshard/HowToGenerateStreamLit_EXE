@@ -88,7 +88,11 @@ Streamlit often requires original Python files to remain accessible.
 
 You can update the generated EXE's icon using:
 
-Requirements for Icon Changer - `#pip install pillow pywin32`
+Requirements for Icon Changer
+
+```
+pip install pillow pywin32
+```
 
 -   **WIN_ChangeIconForEXE**
 
