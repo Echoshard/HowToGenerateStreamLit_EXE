@@ -54,8 +54,7 @@ from google import genai
 from google.genai import types
 ```
 
-> These imports don't need to be used---cx_Freeze just needs to see them
-> during build.
+If you are using new python lobaries this may be a bit of trial and error when the `EXE` fails just add them one by one until they work!
 
 ------------------------------------------------------------------------
 
