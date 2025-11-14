@@ -1,0 +1,9 @@
+streamlit
+openai
+beautifulsoup4
+requests
+pymupdf
+google-genai
+pydub
+cx_freeze
+pyttsx3

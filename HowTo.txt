@@ -1,0 +1,42 @@
+https://youtu.be/tmc67kpzq88
+
+Works fine with latest streamlit
+
+
+Steps
+
+pip install virtualenv
+
+python -m virtualenv streamlitDesktop
+
+.\streamlitDesktop\Scripts\activate
+
+#Install your Requirements
+pip install streamlit openai beautifulsoup4 requests pymupdf google-genai pydub cx_freeze
+
+Add your imports to the setup.py 
+
+#Install cx_freeze if you have not
+pip install cx_freeze    
+
+#Also add any other packages you may need
+
+copy setup.py
+copy app.py
+
+to streamlitDesktop folder
+
+cd streamlitDesktop
+
+
+				                //Folder			//Name of EXE (Can be changed)
+cxfreeze -c setup.py  --target-dir toRun  --target-name MyStreamlitApp.exe 
+
+
+
+Find the exe.win-adm64.311
+add add setup.py and app.py along with any other python files.
+
+This excutable will run any python that requires these packages so it can be reused 
+
+
