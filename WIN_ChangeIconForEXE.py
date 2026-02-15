@@ -9,16 +9,23 @@ import win32api
 import win32con
 import win32gui
 import ctypes
+from win32com.client import Dispatch
+import subprocess
+import shutil
 
-def convert_to_ico(image_path):
+def convert_to_ico(image_path, output_path=None):
     # Convert PNG/JPEG to ICO file (256x256)
     img = Image.open(image_path)
     img = img.resize((256, 256), Image.LANCZOS)
-    temp_ico = tempfile.NamedTemporaryFile(delete=False, suffix='.ico')
-    img.save(temp_ico.name, format='ICO', sizes=[(256,256)])
-    return temp_ico.name
+    if output_path:
+        img.save(output_path, format='ICO', sizes=[(256,256)])
+        return output_path
+    else:
+        temp_ico = tempfile.NamedTemporaryFile(delete=False, suffix='.ico')
+        img.save(temp_ico.name, format='ICO', sizes=[(256,256)])
+        return temp_ico.name
 
-def change_icon(exe_path, ico_path):
+def change_exe_icon(exe_path, ico_path):
     # Load icon resource from ICO file
     ICOGROUP_ICON = 1
     # handle to the exe file
@@ -119,15 +126,116 @@ def change_icon(exe_path, ico_path):
 
     win32api.EndUpdateResource(hExe, False)
 
-    messagebox.showinfo("Success", "Icon changed successfully!")
+    messagebox.showinfo("Success", "EXE Icon changed successfully!")
+
+def find_csc():
+    # Common paths for .NET Framework C# compiler
+    paths = [
+        r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+        r"C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return None
+
+def create_csharp_launcher(bat_path, ico_path):
+    csc_path = find_csc()
+    if not csc_path:
+        # Fallback: try using 'csc' from PATH
+        csc_path = "csc.exe"
+        try:
+           subprocess.run([csc_path, "/?"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except:
+           raise Exception("Could not find C# compiler (csc.exe). Please install .NET Framework or add csc to PATH.")
+
+    bat_filename = os.path.basename(bat_path)
+    exe_name = os.path.splitext(bat_filename)[0] + ".exe"
+    output_exe_path = os.path.join(os.path.dirname(bat_path), exe_name)
+
+    # C# Source Template
+    # We escape curly braces for python format string by doubling them {{ }}
+    csharp_code = f"""
+using System;
+using System.Diagnostics;
+using System.IO;
+
+namespace BatLauncher {{
+    class Program {{
+        static void Main(string[] args) {{
+            try {{
+                string batFile = "{bat_filename}";
+                string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+                string batPath = Path.Combine(exeDir, batFile);
+                
+                if (!File.Exists(batPath)) {{
+                    Console.WriteLine("Error: Could not find " + batFile);
+                    Console.WriteLine("Expected at: " + batPath);
+                    Console.WriteLine("Press any key to exit...");
+                    Console.ReadKey();
+                    return;
+                }}
+                
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = batPath;
+                psi.UseShellExecute = true;
+                
+                if (args.Length > 0) {{
+                    string allArgs = "";
+                    foreach (var arg in args) {{
+                         allArgs += " \\"" + arg + "\\"";
+                    }}
+                    psi.Arguments = allArgs;
+                }}
+                
+                Process p = Process.Start(psi);
+                p.WaitForExit();
+            }} catch (Exception ex) {{
+                Console.WriteLine("Error launching batch file: " + ex.Message);
+                Console.ReadKey();
+            }}
+        }}
+    }}
+}}
+"""
+    
+    # Create temp directory for compilation
+    with tempfile.TemporaryDirectory() as temp_dir:
+        source_path = os.path.join(temp_dir, "launcher.cs")
+        with open(source_path, "w") as f:
+            f.write(csharp_code)
+        
+        # Compile command
+        # /target:winexe -> Windows app (no console window for the launcher itself)
+        # /win32icon:... -> Embeds the icon
+        cmd = [
+            csc_path,
+            "/target:winexe",
+            f"/out:{output_exe_path}",
+            f"/win32icon:{ico_path}",
+            source_path
+        ]
+        
+        # Hide compiler output window logic
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        
+        # Run compilation
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, startupinfo=startupinfo)
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            raise Exception(f"Compilation failed:\\n{stdout.decode()}\\n{stderr.decode()}")
+            
+    return output_exe_path
 
 class IconChangerGUI:
     def __init__(self, master):
         self.master = master
-        master.title("EXE Icon Changer")
+        master.title("Icon Changer (EXE & BAT)")
 
         self.image_path = None
-        self.exe_path = None
+        self.file_path = None
 
         self.label1 = tk.Label(master, text="Select Image (PNG, JPEG):")
         self.label1.grid(row=0, column=0, padx=5, pady=5, sticky='w')
@@ -135,14 +243,18 @@ class IconChangerGUI:
         self.btn_select_image = tk.Button(master, text="Browse...", command=self.select_image)
         self.btn_select_image.grid(row=0, column=1, padx=5, pady=5)
 
-        self.label2 = tk.Label(master, text="Select EXE file:")
+        self.label2 = tk.Label(master, text="Select EXE or BAT file:")
         self.label2.grid(row=1, column=0, padx=5, pady=5, sticky='w')
 
-        self.btn_select_exe = tk.Button(master, text="Browse...", command=self.select_exe)
-        self.btn_select_exe.grid(row=1, column=1, padx=5, pady=5)
+        self.btn_select_file = tk.Button(master, text="Browse...", command=self.select_file)
+        self.btn_select_file.grid(row=1, column=1, padx=5, pady=5)
 
-        self.btn_change = tk.Button(master, text="Change Icon", command=self.change_icon)
+        self.btn_change = tk.Button(master, text="Process", command=self.process_file)
         self.btn_change.grid(row=2, column=0, columnspan=2, pady=10)
+
+        # Instructions label
+        self.lbl_info = tk.Label(master, text="Note: For BAT files, a launcher .EXE will be created.", fg="gray")
+        self.lbl_info.grid(row=3, column=0, columnspan=2, pady=5)
 
     def select_image(self):
         path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
@@ -150,30 +262,48 @@ class IconChangerGUI:
             self.image_path = path
             self.label1.config(text=f"Image: {os.path.basename(path)}")
 
-    def select_exe(self):
-        path = filedialog.askopenfilename(filetypes=[("Executable files", "*.exe")])
+    def select_file(self):
+        path = filedialog.askopenfilename(filetypes=[("Executable or Batch", "*.exe;*.bat"), ("Executable", "*.exe"), ("Batch", "*.bat")])
         if path:
-            self.exe_path = path
-            self.label2.config(text=f"EXE: {os.path.basename(path)}")
+            self.file_path = path
+            self.label2.config(text=f"File: {os.path.basename(path)}")
 
-    def change_icon(self):
-        if not self.image_path or not self.exe_path:
-            messagebox.showwarning("Missing input", "Please select both an image and an EXE file.")
+    def process_file(self):
+        if not self.image_path or not self.file_path:
+            messagebox.showwarning("Missing input", "Please select both an image and a target file.")
             return
 
-        try:
-            ico_file = convert_to_ico(self.image_path)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to convert image to ico:\n{e}")
-            return
+        ext = os.path.splitext(self.file_path)[1].lower()
 
         try:
-            change_icon(self.exe_path, ico_file)
+            if ext == '.exe':
+                # For EXEs, we can use a temp ICO and inject it
+                ico_file = convert_to_ico(self.image_path)
+                try:
+                    change_exe_icon(self.file_path, ico_file)
+                finally:
+                    if os.path.exists(ico_file):
+                        os.remove(ico_file)
+            
+            elif ext == '.bat':
+                # For BATs, generate a C# wrapper and compile it
+                # We need a temp .ico file for the compiler
+                ico_file = convert_to_ico(self.image_path)
+                
+                try:
+                    created_exe = create_csharp_launcher(self.file_path, ico_file)
+                    messagebox.showinfo("Success", f"Created exe launcher: {os.path.basename(created_exe)}\n\n(It launches {os.path.basename(self.file_path)})")
+                except Exception as e:
+                     messagebox.showerror("Error", f"Failed to create EXE launcher:\n{e}")
+                finally:
+                    if os.path.exists(ico_file):
+                        os.remove(ico_file)
+            
+            else:
+                messagebox.showerror("Error", "Unsupported file type. Please select .exe or .bat")
+
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to change EXE icon:\n{e}")
-        finally:
-            if os.path.exists(ico_file):
-                os.remove(ico_file)
+            messagebox.showerror("Error", f"An error occurred:\n{e}")
 
 if __name__ == '__main__':
     root = tk.Tk()
